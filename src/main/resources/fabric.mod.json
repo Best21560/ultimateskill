@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "ultimateskill",
+	"version": "${version}",
+	"name": "Ultimate Skill",
+	"description": "Press R for an ultimate-skill cutscene: face zoom, red aura, blast.",
+	"authors": [
+		"Me"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/ultimateskill/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.example.UltimateSkillClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.14.21",
+		"minecraft": "~1.20.1",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}
