@@ -3,14 +3,17 @@
 	"id": "ultimateskill",
 	"version": "${version}",
 	"name": "Ultimate Skill",
-	"description": "Press R for an ultimate-skill cutscene: face zoom, red aura, blast.",
+	"description": "Three skills (Demon Claw, Leap Slam, Asura Mode) with a skill bar showing damage and cooldown.",
 	"authors": [
 		"Me"
 	],
 	"license": "CC0-1.0",
 	"icon": "assets/ultimateskill/icon.png",
-	"environment": "client",
+	"environment": "*",
 	"entrypoints": {
+		"main": [
+			"com.example.UltimateSkill"
+		],
 		"client": [
 			"com.example.UltimateSkillClient"
 		]
