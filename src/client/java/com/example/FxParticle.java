@@ -125,13 +125,13 @@ public class FxParticle extends SpriteBillboardParticle {
             super.buildGeometry(vc, camera, tickDelta);
             return;
         }
-        // flat quad lying on the ground (texture is 2:1)
+        // flat quad lying on the ground (square texture)
         Vec3d cam = camera.getPos();
         float px = (float) (MathHelper.lerp(tickDelta, this.prevPosX, this.x) - cam.getX());
         float py = (float) (MathHelper.lerp(tickDelta, this.prevPosY, this.y) - cam.getY());
         float pz = (float) (MathHelper.lerp(tickDelta, this.prevPosZ, this.z) - cam.getZ());
         float hw = this.scale;
-        float hd = hw * 0.5f;
+        float hd = hw;
         float cos = MathHelper.cos(yaw), sin = MathHelper.sin(yaw);
         float[] cx = {-hw, -hw, hw, hw};
         float[] cz = {-hd, hd, hd, -hd};

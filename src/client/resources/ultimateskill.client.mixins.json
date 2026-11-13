@@ -4,7 +4,8 @@
 	"compatibilityLevel": "JAVA_17",
 	"client": [
 		"CameraMixin",
-		"LivingEntityRendererMixin"
+		"LivingEntityRendererMixin",
+		"PlayerEntityModelMixin"
 	],
 	"injectors": {
 		"defaultRequire": 0

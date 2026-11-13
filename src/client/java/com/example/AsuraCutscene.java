@@ -101,6 +101,7 @@ public final class AsuraCutscene {
 
     /** Degrees the body is tipped over (0 = standing, 90 = lying on the back). Used by LivingEntityRendererMixin. */
     public static float lieAngle(float tickDelta) {
+        lastTd = tickDelta;
         if (tick < 0) return 0f;
         float p = tick + tickDelta;
         if (p < T_FALL) return (float) (90.0 * LIE_SIGN * easeOut(clamp(p / T_FALL)));
@@ -110,6 +111,136 @@ public final class AsuraCutscene {
             return (float) (90.0 * LIE_SIGN * (1.0 - ease(t)));
         }
         return 0f;
+    }
+
+    // ------------------------------------------------------------------ body language
+    // twitching on the ground, struggling to get up, then a power stance
+
+    private static float lastTd = 0f;
+
+    private static float hash(int i, int salt) {
+        double h = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
+        return (float) ((h - Math.floor(h)) * 2.0 - 1.0);
+    }
+
+    /** Jerky noise in -1..1: picks a new random target a few times a second and snaps quickly towards it. */
+    private static float snap(float p, int salt, float rate) {
+        float x = p * rate;
+        int i = (int) Math.floor(x);
+        float f = x - i;
+        float a = hash(i, salt), b = hash(i + 1, salt);
+        float t = (float) easeOut(clamp(f * 2.5f));
+        return a + (b - a) * t;
+    }
+
+    private static float bump(float p, float center, float width) {
+        float x = Math.abs(p - center) / width;
+        return x >= 1f ? 0f : (float) Math.pow(1f - x, 1.5);
+    }
+
+    private static float mixf(float a, float b, float t) { return a + (b - a) * t; }
+
+    /** Convulsions: faint tremor all the time, with stronger jolts (as if power surges through the body). */
+    private static float spasm(float p) {
+        float e = 0.12f;
+        e = Math.max(e, 0.6f * bump(p, 17, 5));
+        e = Math.max(e, 0.8f * bump(p, 26, 4));
+        e = Math.max(e, 1.0f * bump(p, 35, 5));
+        e = Math.max(e, 1.0f * bump(p, 45, 6));
+        return e;
+    }
+
+    private static float shake(float p) {
+        if (p < T_FALL) return 0f;
+        if (p < T_RISE_START) return spasm(p);
+        if (p < T_BLAST) {
+            float t = clamp((p - T_RISE_START) / (float) (T_BLAST - T_RISE_START));
+            return 0.55f * (1f - t) + 0.12f;
+        }
+        return Math.max(0f, 0.9f * (1f - (p - T_BLAST) / 22f));
+    }
+
+    /** Whole-body jitter for the local player: {dx, dy, dz (blocks), yaw, pitch (degrees)}, or null when idle. */
+    public static float[] bodyJitter(float td) {
+        if (tick < 0) return null;
+        float p = tick + td;
+        float s = shake(p) * (p >= T_BLAST ? 0.35f : 1f);
+        float dy = 0.05f * s * Math.abs(snap(p, 1, 0.5f));
+        if (p >= T_FALL && p < T_FALL + 6) dy += 0.12f * bump(p, T_FALL + 1.5f, 3f); // bounce on impact
+        return new float[]{0.03f * s * snap(p, 2, 0.5f), dy, 0.03f * s * snap(p, 3, 0.5f),
+                7f * s * snap(p, 4, 0.45f), 5f * s * snap(p, 5, 0.5f)};
+    }
+
+    /**
+     * Limb angles for the local player's model (radians):
+     * {rightArm pitch, rightArm roll, leftArm pitch, leftArm roll, rightLeg pitch, rightLeg roll,
+     *  leftLeg pitch, leftLeg roll, head pitch, head roll}, or null when idle.
+     */
+    public static float[] limbPose() {
+        if (tick < 0) return null;
+        float p = tick + lastTd;
+        float s = shake(p);
+        float n1 = snap(p, 11, 0.5f), n2 = snap(p, 12, 0.5f), n3 = snap(p, 13, 0.5f), n4 = snap(p, 14, 0.5f);
+        float n5 = snap(p, 15, 0.5f), n6 = snap(p, 16, 0.5f), n7 = snap(p, 17, 0.5f), n8 = snap(p, 18, 0.5f);
+        float n9 = snap(p, 19, 0.5f), n10 = snap(p, 20, 0.5f);
+        float rArmX, rArmZ, lArmX, lArmZ, rLegX, rLegZ, lLegX, lLegZ, headX, headZ;
+
+        if (p < T_FALL) {                       // thrown backwards: arms fly up, legs kick
+            float t = clamp(p / T_FALL), u = 1f - t;
+            rArmX = -2.5f * u * u + 0.4f * n1 * u;
+            lArmX = -2.5f * u * u + 0.4f * n3 * u;
+            rArmZ = 0.25f + 0.9f * u;
+            lArmZ = 0.25f + 0.9f * u;
+            float k = (float) Math.sin(t * Math.PI);
+            rLegX = 0.5f * k * n5;
+            lLegX = 0.5f * k * n7;
+            rLegZ = 0.08f + 0.25f * u;
+            lLegZ = 0.08f + 0.25f * u;
+            headX = -0.3f * u;
+            headZ = 0.2f * n9 * u;
+        } else if (p < T_RISE_START) {          // convulsing on the ground
+            rArmX = 1.1f * s * n1;
+            lArmX = 1.1f * s * n3;
+            rArmZ = 0.25f + 0.9f * s * Math.abs(n2);
+            lArmZ = 0.25f + 0.9f * s * Math.abs(n4);
+            rLegX = 0.6f * s * n5;
+            lLegX = 0.6f * s * n7;
+            rLegZ = 0.08f + 0.4f * s * Math.abs(n6);
+            lLegZ = 0.08f + 0.4f * s * Math.abs(n8);
+            headX = -0.15f - 0.3f * s * Math.abs(n9);
+            headZ = 0.35f * s * n10;
+        } else if (p < T_BLAST) {               // struggling up: arms spread wide, then settle
+            float t = clamp((p - T_RISE_START) / (float) (T_BLAST - T_RISE_START));
+            float z = t < 0.55f ? mixf(0.25f, 1.4f, (float) ease(t / 0.55f))
+                                : mixf(1.4f, 0.55f, (float) ease((t - 0.55f) / 0.45f));
+            float x = mixf(0f, -0.25f, (float) ease(t));
+            rArmX = x + 0.35f * s * n1;
+            lArmX = x + 0.35f * s * n3;
+            rArmZ = z + 0.3f * s * n2;
+            lArmZ = z + 0.3f * s * n4;
+            float lz = mixf(0.08f, 0.14f, (float) ease(t));
+            rLegX = 0.3f * s * n5;
+            lLegX = 0.3f * s * n7;
+            rLegZ = lz;
+            lLegZ = lz;
+            headX = mixf(-0.15f, -0.3f, (float) ease(t)) + 0.2f * s * n9;
+            headZ = 0.25f * s * n10;
+        } else {                                // power stance with a fading tremor
+            float surge = Math.max(0f, 1f - (p - T_BLAST) / 22f);
+            float br = 0.04f * (float) Math.sin(p * 0.25f);
+            rArmX = -0.22f + 0.3f * surge * n1;
+            lArmX = -0.22f + 0.3f * surge * n3;
+            rArmZ = 0.55f + br + 0.35f * surge * Math.abs(n2);
+            lArmZ = 0.55f + br + 0.35f * surge * Math.abs(n4);
+            rLegX = 0.1f * surge * n5;
+            lLegX = 0.1f * surge * n7;
+            rLegZ = 0.14f;
+            lLegZ = 0.14f;
+            headX = -0.28f + 0.12f * surge * n9;
+            headZ = 0.1f * surge * n10;
+        }
+        // roll: right limbs outward = positive, left limbs outward = negative
+        return new float[]{rArmX, rArmZ, lArmX, -lArmZ, rLegX, rLegZ, lLegX, -lLegZ, headX, headZ};
     }
 
     private static double fovAt(float p) {
