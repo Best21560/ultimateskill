@@ -5,45 +5,54 @@ import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.Perspective;
-import net.minecraft.particle.DustParticleEffect;
-import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import org.joml.Vector3f;
-
-import java.util.Random;
 
 /**
- * Asura Mode "awakening" cutscene (client side).
+ * Asura Mode awakening cutscene (client side).
  *
- *   0-10    black screen + glitch bars
- *  10-45    close-up of the face, slow push in, grey wash
- *  45-75    camera tilts down the body, title text
- *  75-100   camera rises back to the face, white glow builds
- *  100      BLAST (same moment the server deals damage) + white flash
- * 100-150   camera pulls back to full body, red aura, "AWAKENED" banner
+ *   0-12    the character is knocked down and lies on their back
+ *  12-55    lying on the ground, camera drifts to a close-up of the face, energy gathers
+ *  55-85    the body is lifted up to standing, camera low and looking up, glow builds
+ *  85       BLAST (same moment the server deals damage) + flash
+ *  85-150   camera pulls back, red-black pillar of energy, "AWAKENED" banner
  * 150-160   fade out
  *
- * The camera itself is moved by CameraMixin (see camera()).
+ * The camera is moved by CameraMixin and the lying pose is applied by LivingEntityRendererMixin.
  * Press Esc during the cutscene to skip it.
  */
 public final class AsuraCutscene {
-    private static final int T_GLITCH = 10;
-    private static final int T_PUSH_END = 45;
-    private static final int T_TILT_END = 75;
-    private static final int T_RISE_END = Skills.ASURA_DELAY_CUTSCENE; // = blast tick
+    private static final int T_FALL = 12;
+    private static final int T_FACE = 50;
+    private static final int T_RISE_START = 55;
+    private static final int T_BLAST = Skills.ASURA_DELAY_CUTSCENE; // 85, also standing again
     private static final int T_HOLD_END = 150;
     private static final int TOTAL = 160;
-    private static final int CUT_FOV = 55;
+
+    /**
+     * If the character lies FACE DOWN instead of face up, change this to -1.0.
+     */
+    private static final double LIE_SIGN = 1.0;
+
+    // ---- camera keyframes: time, camera (forward, right, up), focus (forward, right, up), fov
+    // "forward" is the direction the character faces; the lying body extends BEHIND the feet (negative forward).
+    private static final double[][] KEYS = {
+            //  t     camF  camR  camU    fcsF  fcsR  fcsU   fov
+            {  0,    3.2,  0.0,  2.2,    0.0,  0.0,  1.0,   60},  // standing, seen from the front
+            { 12,    2.4,  1.0,  3.0,   -0.9,  0.0,  0.2,   60},  // lying, seen from above
+            { 30,    1.2,  0.5,  2.0,   -1.5,  0.0,  0.2,   55},  // drifting toward the head
+            { 50,   -0.9,  0.0,  1.1,   -1.65, 0.0,  0.25,  42},  // face close-up from above
+            { 55,   -0.9,  0.0,  1.1,   -1.65, 0.0,  0.25,  42},  // hold
+            { 70,    2.6,  0.0,  0.5,    0.0,  0.0,  0.9,   58},  // low angle, body rising
+            { 85,    3.2,  0.0,  0.6,    0.0,  0.0,  1.3,   62},  // standing, looking up at them
+            {150,    5.8,  0.0,  1.7,    0.0,  0.0,  1.9,   -1},  // pull back (fov = player's normal)
+    };
 
     private static int tick = -1;
     private static int savedFov;
     private static Perspective savedPerspective;
     private static boolean savedHudHidden;
-
-    private static final DustParticleEffect RED_DUST =
-            new DustParticleEffect(new Vector3f(1.0f, 0.05f, 0.05f), 1.4f);
 
     private AsuraCutscene() {}
 
@@ -77,23 +86,62 @@ public final class AsuraCutscene {
         if (tick < 0) return;
         if (client.player == null || client.world == null) { stop(client, true); return; }
 
-        // field of view: fixed during the cutscene, widening back to normal during the pull-back
-        int fov = CUT_FOV;
-        if (tick >= T_RISE_END) {
-            double t = ease(clamp((tick - T_RISE_END) / (float) (T_HOLD_END - T_RISE_END)));
-            fov = (int) lerp(t, CUT_FOV, savedFov);
-        }
-        client.options.getFov().setValue(fov);
+        client.options.getFov().setValue((int) fovAt(tick));
 
-        spawnAura(client);
-        if (tick == T_PUSH_END) client.player.playSound(SoundEvents.ENTITY_ELDER_GUARDIAN_CURSE, 0.7f, 0.8f);
-        if (tick == T_RISE_END) blast(client);
+        spawnEffects(client);
+        if (tick == 3) client.player.playSound(SoundEvents.ENTITY_GENERIC_BIG_FALL, 1.0f, 0.7f);
+        if (tick == T_FACE) client.player.playSound(SoundEvents.ENTITY_ELDER_GUARDIAN_CURSE, 0.7f, 0.8f);
+        if (tick == T_BLAST) blast(client);
 
         tick++;
         if (tick >= TOTAL) stop(client, true);
     }
 
-    // ------------------------------------------------------------------ camera
+    // ------------------------------------------------------------------ pose + camera
+
+    /** Degrees the body is tipped over (0 = standing, 90 = lying on the back). Used by LivingEntityRendererMixin. */
+    public static float lieAngle(float tickDelta) {
+        if (tick < 0) return 0f;
+        float p = tick + tickDelta;
+        if (p < T_FALL) return (float) (90.0 * LIE_SIGN * easeOut(clamp(p / T_FALL)));
+        if (p < T_RISE_START) return (float) (90.0 * LIE_SIGN);
+        if (p < T_BLAST) {
+            double t = clamp((p - T_RISE_START) / (T_BLAST - T_RISE_START));
+            return (float) (90.0 * LIE_SIGN * (1.0 - ease(t)));
+        }
+        return 0f;
+    }
+
+    private static double fovAt(float p) {
+        double[] k = frame(p);
+        double fov = k[7];
+        return fov < 0 ? savedFov : fov;
+    }
+
+    /** Interpolated keyframe values for time p. */
+    private static double[] frame(float p) {
+        if (p <= KEYS[0][0]) return KEYS[0].clone();
+        for (int i = 0; i < KEYS.length - 1; i++) {
+            double[] a = KEYS[i], b = KEYS[i + 1];
+            if (p <= b[0]) {
+                double t = ease(clamp((float) ((p - a[0]) / (b[0] - a[0]))));
+                double[] out = new double[8];
+                out[0] = p;
+                for (int j = 1; j < 8; j++) {
+                    double av = a[j], bv = b[j];
+                    if (j == 7) { // fov: -1 means "player's normal fov"
+                        if (av < 0) av = savedFov;
+                        if (bv < 0) bv = savedFov;
+                    }
+                    out[j] = av + (bv - av) * t;
+                }
+                return out;
+            }
+        }
+        double[] last = KEYS[KEYS.length - 1].clone();
+        if (last[7] < 0) last[7] = savedFov;
+        return last;
+    }
 
     /** Returns {x, y, z, yaw, pitch} for the camera, or null when no cutscene is playing. */
     public static double[] camera(float tickDelta) {
@@ -101,68 +149,85 @@ public final class AsuraCutscene {
         ClientPlayerEntity pl = MinecraftClient.getInstance().player;
         if (pl == null) return null;
         float p = tick + tickDelta;
-
-        double h, d, pitch;
-        if (p < T_PUSH_END) {
-            double t = ease(clamp(p / T_PUSH_END));
-            h = 1.55; d = lerp(t, 1.3, 0.95); pitch = lerp(t, 0, 3);
-        } else if (p < T_TILT_END) {
-            double t = ease(clamp((p - T_PUSH_END) / (T_TILT_END - T_PUSH_END)));
-            h = lerp(t, 1.55, 1.1); d = lerp(t, 0.95, 2.0); pitch = lerp(t, 3, 28);
-        } else if (p < T_RISE_END) {
-            double t = ease(clamp((p - T_TILT_END) / (T_RISE_END - T_TILT_END)));
-            h = lerp(t, 1.1, 1.6); d = lerp(t, 2.0, 0.9); pitch = lerp(t, 28, 0);
-        } else {
-            double t = ease(clamp((p - T_RISE_END) / (T_HOLD_END - T_RISE_END)));
-            h = lerp(t, 1.6, 1.5); d = lerp(t, 0.9, 4.5); pitch = lerp(t, 0, -4);
-        }
+        double[] k = frame(p);
 
         Vec3d base = pl.getLerpedPos(tickDelta);
-        float yaw = MathHelper.lerpAngleDegrees(tickDelta, pl.prevHeadYaw, pl.headYaw);
-        double rad = Math.toRadians(yaw);
-        double fx = -Math.sin(rad);
-        double fz = Math.cos(rad);
-        // camera stands in front of the player and looks back at them
-        return new double[]{base.x + fx * d, base.y + h, base.z + fz * d, yaw + 180.0f, pitch};
+        float bodyYaw = MathHelper.lerpAngleDegrees(tickDelta, pl.prevBodyYaw, pl.bodyYaw);
+        double rad = Math.toRadians(bodyYaw);
+        double fx = -Math.sin(rad), fz = Math.cos(rad); // forward
+        double rx = -fz, rz = fx;                       // right
+
+        double cx = base.x + fx * k[1] + rx * k[2];
+        double cy = base.y + k[3];
+        double cz = base.z + fz * k[1] + rz * k[2];
+        double tx = base.x + fx * k[4] + rx * k[5];
+        double ty = base.y + k[6];
+        double tz = base.z + fz * k[4] + rz * k[5];
+
+        double dx = tx - cx, dy = ty - cy, dz = tz - cz;
+        double hd = Math.sqrt(dx * dx + dz * dz);
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) Math.toDegrees(-Math.atan2(dy, hd));
+        return new double[]{cx, cy, cz, yaw, pitch};
     }
 
     // ------------------------------------------------------------------ effects
 
-    private static void spawnAura(MinecraftClient client) {
+    private static void spawnEffects(MinecraftClient client) {
         var rnd = client.world.random;
-        double px = client.player.getX();
-        double py = client.player.getY();
-        double pz = client.player.getZ();
-        int count = tick < T_PUSH_END ? 0 : (tick < T_RISE_END ? 5 : 12);
-        for (int i = 0; i < count; i++) {
-            double ang = rnd.nextDouble() * Math.PI * 2;
-            double r = 0.5 + rnd.nextDouble() * 0.5;
-            client.world.addParticle(RED_DUST,
-                    px + Math.cos(ang) * r, py + rnd.nextDouble() * 2.0, pz + Math.sin(ang) * r,
-                    0, 0.06 + rnd.nextDouble() * 0.05, 0);
-        }
-        // tall red "spikes" rising around the player after the blast
-        if (tick >= T_RISE_END && tick % 2 == 0) {
-            for (int i = 0; i < 6; i++) {
+        double px = client.player.getX(), py = client.player.getY(), pz = client.player.getZ();
+        float bodyYaw = client.player.bodyYaw;
+        double rad = Math.toRadians(bodyYaw);
+        double fx = -Math.sin(rad), fz = Math.cos(rad);
+
+        if (tick >= 4 && tick < T_BLAST) {
+            // energy drawn in toward the lying / rising body
+            double mx = px - fx * 0.9, mz = pz - fz * 0.9;
+            int n = tick < T_RISE_START ? 2 : 6;
+            for (int i = 0; i < n; i++) {
                 double ang = rnd.nextDouble() * Math.PI * 2;
-                double r = 1.5 + rnd.nextDouble() * 2.0;
-                client.world.addParticle(RED_DUST,
-                        px + Math.cos(ang) * r, py, pz + Math.sin(ang) * r,
-                        0, 0.35 + rnd.nextDouble() * 0.3, 0);
+                double r = 1.5 + rnd.nextDouble() * 1.5;
+                double sx = mx + Math.cos(ang) * r, sz = mz + Math.sin(ang) * r;
+                double sy = py + 0.1 + rnd.nextDouble() * 1.2;
+                Fx.spawnVel(client.world, (i % 2 == 0) ? Fx.RED : Fx.BLACK, sx, sy, sz,
+                        (mx - sx) * 0.08, (py + 0.4 - sy) * 0.05, (mz - sz) * 0.08);
+            }
+        }
+        if (tick > T_BLAST) {
+            // red-black flames rising around the character
+            if (tick % 2 == 0) {
+                for (int i = 0; i < 3; i++) {
+                    double ang = rnd.nextDouble() * Math.PI * 2;
+                    double r = 0.4 + rnd.nextDouble() * 1.4;
+                    Fx.flame(client.world, px + Math.cos(ang) * r, py, pz + Math.sin(ang) * r, 1.0f + rnd.nextFloat() * 1.0f);
+                }
+            }
+            // tall red-black pillar of energy
+            for (int i = 0; i < 10; i++) {
+                double ang = rnd.nextDouble() * Math.PI * 2;
+                double r = rnd.nextDouble() * 0.9;
+                Fx.spawnVel(client.world, (i % 2 == 0) ? Fx.RED : Fx.BLACK,
+                        px + Math.cos(ang) * r, py + 0.1, pz + Math.sin(ang) * r,
+                        0, 0.5 + rnd.nextDouble() * 0.5, 0);
+            }
+            if (tick % 2 == 0) {
+                for (int i = 0; i < 6; i++) {
+                    double ang = rnd.nextDouble() * Math.PI * 2;
+                    double r = 1.5 + rnd.nextDouble() * 2.0;
+                    Fx.spawnVel(client.world, Fx.DARK_RED, px + Math.cos(ang) * r, py, pz + Math.sin(ang) * r,
+                            0, 0.35 + rnd.nextDouble() * 0.3, 0);
+                }
             }
         }
     }
 
     private static void blast(MinecraftClient client) {
         var rnd = client.world.random;
-        double px = client.player.getX();
-        double py = client.player.getY() + 1.0;
-        double pz = client.player.getZ();
-        client.world.addParticle(ParticleTypes.EXPLOSION_EMITTER, px, py, pz, 0, 0, 0);
-        for (int i = 0; i < 80; i++) {
+        double px = client.player.getX(), py = client.player.getY() + 1.0, pz = client.player.getZ();
+        for (int i = 0; i < 90; i++) {
             double ang = rnd.nextDouble() * Math.PI * 2;
             double speed = 0.3 + rnd.nextDouble() * 0.6;
-            client.world.addParticle(RED_DUST, px, py, pz,
+            Fx.spawnVel(client.world, (i % 2 == 0) ? Fx.RED : Fx.BLACK, px, py, pz,
                     Math.cos(ang) * speed, (rnd.nextDouble() - 0.3) * 0.4, Math.sin(ang) * speed);
         }
         client.player.playSound(SoundEvents.ENTITY_GENERIC_EXPLODE, 1.0f, 0.8f);
@@ -176,56 +241,44 @@ public final class AsuraCutscene {
         TextRenderer tr = mc.textRenderer;
         float p = tick + td;
 
-        // black fade-in at the start
-        if (p < 14) {
-            int ba = (int) (255 * (1f - clamp((p - 2) / 12f)));
-            if (ba > 0) ctx.fill(0, 0, w, h, ba << 24);
-        }
-        // glitch bars on the black screen
-        if (p < T_GLITCH) {
-            Random r = new Random(tick * 31L);
-            for (int i = 0; i < 14; i++) {
-                int y = r.nextInt(Math.max(1, h));
-                int bh = 2 + r.nextInt(h / 10 + 1);
-                int x1 = r.nextInt(Math.max(1, w / 2));
-                int x2 = Math.min(w, x1 + w / 4 + r.nextInt(Math.max(1, w / 2)));
-                ctx.fill(x1, y, x2, Math.min(h, y + bh), r.nextBoolean() ? 0xFFFFFFFF : 0xFF202020);
-            }
+        // impact flash when knocked down
+        if (p < 6) {
+            int a = (int) (170 * (1f - p / 6f));
+            if (a > 0) ctx.fill(0, 0, w, h, (a << 24) | 0xFFFFFF);
         }
 
-        // grey wash = washed-out "desaturated" look of the close-up
-        float gray = clamp((p - 4) / 8f) * (1f - clamp((p - T_TILT_END) / 10f));
-        int ga = (int) (120 * gray);
-        if (ga > 0) ctx.fill(0, 0, w, h, (ga << 24) | 0x8C8C8C);
+        // dark vignette while lying on the ground
+        float dark = clamp((p - 3) / 8f) * (1f - clamp((p - T_RISE_START) / 20f));
+        int da = (int) (90 * dark);
+        if (da > 0) ctx.fill(0, 0, w, h, da << 24);
 
-        // red wash after the blast
-        float red = clamp((p - T_RISE_END) / 12f) * (1f - clamp((p - T_HOLD_END) / 10f));
-        int ra = (int) (105 * red);
-        if (ra > 0) ctx.fill(0, 0, w, h, (ra << 24) | 0x8A0A1E);
-
-        // title text while the camera tilts down
-        if (p >= 48 && p < 98) {
-            float a = clamp((p - 48) / 6f) * (1f - clamp((p - 92) / 6f));
+        // title during the face close-up
+        if (p >= 26 && p < 58) {
+            float a = clamp((p - 26) / 8f) * (1f - clamp((p - 50) / 8f));
             if (a > 0.05f) {
                 String name = mc.player != null ? mc.player.getName().getString() : "";
-                int jitter = p < 56 ? (tick % 2 == 0 ? 2 : -2) : 0;
-                int cy = (int) (h * 0.50f);
-                drawOutlined(ctx, tr, "ASURA", w / 2 + jitter, cy, 3.0f, a);
-                drawOutlined(ctx, tr, "AWAKENING", w / 2 + jitter, cy + 28, 3.0f, a);
-                drawOutlined(ctx, tr, name, w / 2 + jitter, cy + 56, 1.8f, a);
+                int cy = (int) (h * 0.62f);
+                drawOutlined(ctx, tr, "ASURA", w / 2, cy, 3.0f, a);
+                drawOutlined(ctx, tr, "AWAKENING", w / 2, cy + 28, 3.0f, a);
+                drawOutlined(ctx, tr, name, w / 2, cy + 56, 1.8f, a);
             }
         }
 
-        // white glow building up to the blast, then fading
-        if (p >= 86) {
-            float fl = p < T_RISE_END ? clamp((p - 86) / 14f) : 1f - clamp((p - T_RISE_END) / 16f);
-            int fa = (int) (235 * fl);
-            if (fa > 0) ctx.fill(0, 0, w, h, (fa << 24) | 0xFFE6E6);
+        // red-white glow building while the body rises, then the blast flash
+        if (p >= 62) {
+            float glow = p < T_BLAST ? clamp((p - 62) / 23f) : 1f - clamp((p - T_BLAST) / 18f);
+            int ga = (int) (200 * glow * glow);
+            if (ga > 0) ctx.fill(0, 0, w, h, (ga << 24) | 0xFFD2D2);
         }
 
+        // red wash after the blast
+        float red = clamp((p - T_BLAST) / 12f) * (1f - clamp((p - T_HOLD_END) / 10f));
+        int ra = (int) (95 * red);
+        if (ra > 0) ctx.fill(0, 0, w, h, (ra << 24) | 0x8A0A1E);
+
         // "AWAKENED" banner
-        if (p >= T_RISE_END + 8 && p < T_HOLD_END + 8) {
-            float s = (float) ease(clamp((p - (T_RISE_END + 8)) / 10f));
+        if (p >= T_BLAST + 8 && p < T_HOLD_END + 8) {
+            float s = (float) ease(clamp((p - (T_BLAST + 8)) / 10f));
             float a = 1f - clamp((p - T_HOLD_END) / 8f);
             int bw = 230, bh = 36;
             int x = (int) (w / 2f - bw / 2f - (1f - s) * 40f);
@@ -245,10 +298,10 @@ public final class AsuraCutscene {
             }
         }
 
-        // cinematic black bars (top and bottom)
+        // cinematic black bars
         float barIn = clamp(p / 10f);
         float barOut = 1f - clamp((p - (TOTAL - 10)) / 10f);
-        int barH = (int) (h * 0.12f * barIn * barOut);
+        int barH = (int) (h * 0.10f * barIn * barOut);
         if (barH > 0) {
             ctx.fill(0, 0, w, barH, 0xFF000000);
             ctx.fill(0, h - barH, w, h, 0xFF000000);
@@ -284,5 +337,5 @@ public final class AsuraCutscene {
 
     private static float clamp(float v) { return MathHelper.clamp(v, 0f, 1f); }
     private static double ease(double t) { return t * t * (3 - 2 * t); }
-    private static double lerp(double t, double a, double b) { return a + (b - a) * t; }
+    private static double easeOut(double t) { return 1 - (1 - t) * (1 - t); }
 }

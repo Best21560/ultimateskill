@@ -21,6 +21,9 @@ public final class SkillConfig {
     public static float dashDistance = 5.0f;
     public static float leapMaxDistance = 20.0f;
     public static int chargeSeconds = 5;
+    /** Client only: keep the equipped skills after leaving the world. */
+    public static boolean keepSlots = false;
+    public static final int[] SAVED_SLOTS = {-1, -1, -1};
 
     private SkillConfig() {}
 
@@ -39,6 +42,7 @@ public final class SkillConfig {
         dashDistance = 5.0f;
         leapMaxDistance = 20.0f;
         chargeSeconds = 5;
+        keepSlots = false;
     }
 
     public static void load() {
@@ -62,6 +66,8 @@ public final class SkillConfig {
         dashDistance = clamp(getF(p, "dashDistance", dashDistance), 2f, 15f);
         leapMaxDistance = clamp(getF(p, "leapMaxDistance", leapMaxDistance), 8f, 40f);
         chargeSeconds = (int) clamp(getI(p, "chargeSeconds", chargeSeconds), 1f, 10f);
+        keepSlots = Boolean.parseBoolean(p.getProperty("keepSlots", String.valueOf(keepSlots)));
+        for (int i = 0; i < 3; i++) SAVED_SLOTS[i] = (int) clamp(getI(p, "slot" + i, -1), -1f, 2f);
     }
 
     public static void save() {
@@ -78,6 +84,8 @@ public final class SkillConfig {
         p.setProperty("dashDistance", String.valueOf(dashDistance));
         p.setProperty("leapMaxDistance", String.valueOf(leapMaxDistance));
         p.setProperty("chargeSeconds", String.valueOf(chargeSeconds));
+        p.setProperty("keepSlots", String.valueOf(keepSlots));
+        for (int i = 0; i < 3; i++) p.setProperty("slot" + i, String.valueOf(SAVED_SLOTS[i]));
         try (OutputStream out = Files.newOutputStream(file())) {
             p.store(out, "Ultimate Skill settings");
         } catch (IOException ignored) {

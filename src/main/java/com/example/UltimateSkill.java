@@ -8,6 +8,7 @@ public class UltimateSkill implements ModInitializer {
     @Override
     public void onInitialize() {
         SkillConfig.load();
+        ModParticles.register();
         ServerPlayNetworking.registerGlobalReceiver(Skills.USE_SKILL, (server, player, handler, buf, responseSender) -> {
             int id = buf.readInt();
             int arg = buf.readInt(); // skill 1: charge ticks, skill 2: blast delay, skill 0: unused

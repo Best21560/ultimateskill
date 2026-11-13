@@ -44,16 +44,44 @@ public final class Fx {
         }
     }
 
-    /** Red-black aura around a player; call every tick while Asura Mode is active. */
+    // ------------------------------------------------------------ sprite effects (your own textures)
+
+    /**
+     * White-and-black claw slash that faces the viewer.
+     * mirror: true flips the slash left-right (second hand). halfSize = half width in blocks.
+     */
+    public static void claw(World world, double x, double y, double z, boolean mirror, float roll, float halfSize) {
+        spawnVel(world, ModParticles.CLAW, x, y, z, mirror ? -1.0 : 1.0, roll, halfSize);
+    }
+
+    /** Cracks lying flat on the ground. halfWidth = half of the crack width in blocks, yaw in radians. */
+    public static void crack(World world, double x, double groundY, double z, float halfWidth, float yaw) {
+        spawnVel(world, ModParticles.CRACK, x, groundY + 0.03, z, 0.0, yaw, halfWidth);
+    }
+
+    /** Red-black flame standing on the ground at (x, groundY, z). halfSize = half width in blocks. */
+    public static void flame(World world, double x, double groundY, double z, float halfSize) {
+        spawnVel(world, ModParticles.FLAME, x, groundY + halfSize * 0.95, z, 0.0, 0.0, halfSize);
+    }
+
+    /** A ring of flames around a point (used for big blasts). */
+    public static void flameRing(World world, double x, double groundY, double z, double radius, int count) {
+        var r = world.random;
+        for (int i = 0; i < count; i++) {
+            double a = r.nextDouble() * Math.PI * 2;
+            double rr = radius * (0.35 + 0.65 * r.nextDouble());
+            flame(world, x + Math.cos(a) * rr, groundY, z + Math.sin(a) * rr, 1.2f + r.nextFloat() * 0.9f);
+        }
+    }
+
+    /** Red-black flame aura around a player; call every tick while Asura Mode is active. */
     public static void aura(ServerWorld w, ServerPlayerEntity p) {
         var r = w.random;
         double px = p.getX(), py = p.getY(), pz = p.getZ();
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 2; i++) {
             double a = r.nextDouble() * Math.PI * 2;
-            double rr = 0.4 + r.nextDouble() * 0.5;
-            spawnVel(w, i % 2 == 0 ? RED : BLACK,
-                    px + Math.cos(a) * rr, py + r.nextDouble() * 1.9, pz + Math.sin(a) * rr,
-                    0, 0.05 + r.nextDouble() * 0.06, 0);
+            double rr = 0.35 + r.nextDouble() * 0.5;
+            flame(w, px + Math.cos(a) * rr, py, pz + Math.sin(a) * rr, 0.9f + r.nextFloat() * 0.6f);
         }
         if (r.nextInt(3) == 0) {
             spawnVel(w, DARK_RED, px + (r.nextDouble() - 0.5), py + 0.2, pz + (r.nextDouble() - 0.5), 0, 0.14, 0);

@@ -14,7 +14,7 @@ public final class Skills {
     public static final double ASURA_RADIUS = 6.0;
 
     /** Ticks between pressing the Asura key and the blast (cutscene on / off). */
-    public static final int ASURA_DELAY_CUTSCENE = 100;
+    public static final int ASURA_DELAY_CUTSCENE = 85;
     public static final int ASURA_DELAY_QUICK = 10;
 
     private Skills() {}

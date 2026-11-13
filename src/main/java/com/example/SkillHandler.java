@@ -120,21 +120,12 @@ public final class SkillHandler {
             e.damage(player.getDamageSources().playerAttack(player), damageOf(player, 0));
         }
 
-        // diagonal claw marks (three lines), mirrored for the second hand
+        // claw slash sprite in front of the player, mirrored for the second hand
         Vec3d eye = player.getEyePos();
         Vec3d look = player.getRotationVec(1.0f);
-        Vec3d right = look.crossProduct(new Vec3d(0, 1, 0)).normalize();
-        for (int j = -1; j <= 1; j++) {
-            for (int i = 0; i <= 12; i++) {
-                double t = i / 12.0;
-                Vec3d p = eye.add(look.multiply(1.2 + t * 1.6))
-                        .add(right.multiply(side * (0.9 - t * 1.8)))
-                        .add(0, 0.6 - t * 1.2 + j * 0.25, 0);
-                Fx.spawn(world, (i % 2 == 0) ? Fx.RED : Fx.BLACK, p.x, p.y, p.z, 1, 0, 0, 0, 0);
-            }
-        }
-        Vec3d mid = eye.add(look.multiply(1.8));
-        world.spawnParticles(ParticleTypes.SWEEP_ATTACK, mid.x, mid.y, mid.z, 2, 0.5, 0.3, 0.5, 0);
+        Vec3d pos = eye.add(look.multiply(2.0)).add(0, -0.25, 0);
+        float roll = (float) (world.random.nextDouble() - 0.5) * 0.4f;
+        Fx.claw(world, pos.x, pos.y, pos.z, side > 0, roll, 1.7f);
         world.playSound(null, player.getX(), player.getY(), player.getZ(),
                 SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP, SoundCategory.PLAYERS, 1.0f, side > 0 ? 0.7f : 0.9f);
     }
@@ -183,7 +174,7 @@ public final class SkillHandler {
             e.addVelocity(0, 0.5, 0);
             e.velocityModified = true;
         }
-        ring(world, player.getX(), player.getY() + 0.1, player.getZ(), radius);
+        Fx.crack(world, player.getX(), player.getY(), player.getZ(), (float) radius, (float) (world.random.nextDouble() * Math.PI));
         world.spawnParticles(ParticleTypes.EXPLOSION, player.getX(), player.getY() + 0.3, player.getZ(), 6, 1.5, 0.2, 1.5, 0);
         world.playSound(null, player.getX(), player.getY(), player.getZ(),
                 SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 1.0f, 0.9f);
@@ -208,7 +199,10 @@ public final class SkillHandler {
             e.velocityModified = true;
         }
         world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, player.getX(), player.getY() + 1.0, player.getZ(), 1, 0, 0, 0, 0);
-        ring(world, player.getX(), player.getY() + 0.5, player.getZ(), r);
+        float yaw0 = (float) (world.random.nextDouble() * Math.PI);
+        Fx.crack(world, player.getX(), player.getY(), player.getZ(), (float) r, yaw0);
+        Fx.crack(world, player.getX(), player.getY(), player.getZ(), (float) r * 0.8f, yaw0 + 1.2f);
+        Fx.flameRing(world, player.getX(), player.getY(), player.getZ(), r * 0.7, 14);
         world.playSound(null, player.getX(), player.getY(), player.getZ(),
                 SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 1.5f, 0.6f);
 
@@ -221,15 +215,6 @@ public final class SkillHandler {
     }
 
     // ---------------------------------------------------------------- helpers
-
-    private static void ring(ServerWorld world, double x, double y, double z, double radius) {
-        for (int i = 0; i < 48; i++) {
-            double ang = i * Math.PI * 2 / 48;
-            for (double rr = 1.0; rr <= radius; rr += 1.0) {
-                Fx.spawn(world, (i % 2 == 0) ? Fx.RED : Fx.BLACK, x + Math.cos(ang) * rr, y, z + Math.sin(ang) * rr, 1, 0, 0.1, 0, 0);
-            }
-        }
-    }
 
     private static void setMod(ServerPlayerEntity p, EntityAttribute attr, UUID id, String name, double value) {
         EntityAttributeInstance inst = p.getAttributeInstance(attr);
