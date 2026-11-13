@@ -3,7 +3,7 @@
 	"id": "ultimateskill",
 	"version": "${version}",
 	"name": "Ultimate Skill",
-	"description": "Three skills (Demon Claw, Leap Slam, Asura Mode) with a skill bar showing damage and cooldown.",
+	"description": "Three skills with a skill bar, settings window (K) and an Asura awakening cutscene.",
 	"authors": [
 		"Me"
 	],
@@ -23,5 +23,11 @@
 		"minecraft": "~1.20.1",
 		"java": ">=17",
 		"fabric-api": "*"
-	}
+	},
+	"mixins": [
+		{
+			"config": "ultimateskill.client.mixins.json",
+			"environment": "client"
+		}
+	]
 }

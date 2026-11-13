@@ -7,9 +7,11 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 public class UltimateSkill implements ModInitializer {
     @Override
     public void onInitialize() {
+        SkillConfig.load();
         ServerPlayNetworking.registerGlobalReceiver(Skills.USE_SKILL, (server, player, handler, buf, responseSender) -> {
             int id = buf.readInt();
-            server.execute(() -> SkillHandler.use(player, id));
+            int arg = buf.readInt(); // skill 1: charge ticks, skill 2: blast delay, skill 0: unused
+            server.execute(() -> SkillHandler.use(player, id, arg));
         });
         ServerTickEvents.END_SERVER_TICK.register(SkillHandler::tick);
     }
