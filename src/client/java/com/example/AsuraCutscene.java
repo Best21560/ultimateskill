@@ -225,7 +225,7 @@ public final class AsuraCutscene {
 
         // "AWAKENED" banner
         if (p >= T_RISE_END + 8 && p < T_HOLD_END + 8) {
-            float s = ease(clamp((p - (T_RISE_END + 8)) / 10f));
+            float s = (float) ease(clamp((p - (T_RISE_END + 8)) / 10f));
             float a = 1f - clamp((p - T_HOLD_END) / 8f);
             int bw = 230, bh = 36;
             int x = (int) (w / 2f - bw / 2f - (1f - s) * 40f);
