@@ -64,6 +64,31 @@ public final class Fx {
         spawnVel(world, ModParticles.FLAME, x, groundY + halfSize * 0.95, z, 0.0, 0.0, halfSize);
     }
 
+    /** Shockwave ring lying flat on the ground; it expands while it fades. */
+    public static void ring(World world, double x, double groundY, double z, float halfSize) {
+        spawnVel(world, ModParticles.RING, x, groundY + 0.06, z, 0.0, 0.0, halfSize);
+    }
+
+    /** Impact starburst facing the viewer. */
+    public static void burst(World world, double x, double y, double z, float halfSize) {
+        spawnVel(world, ModParticles.BURST, x, y, z, 0.0, 0.0, halfSize);
+    }
+
+    /** Cel-shaded dust puff that rises and fades. */
+    public static void dust(World world, double x, double y, double z, float halfSize) {
+        spawnVel(world, ModParticles.DUST, x, y, z, 0.0, 0.0, halfSize);
+    }
+
+    /** Small flying spark; (vx, vy, vz) is its starting velocity in blocks per tick. */
+    public static void spark(World world, double x, double y, double z, double vx, double vy, double vz) {
+        spawnVel(world, ModParticles.SPARK, x, y, z, vx, vy, vz);
+    }
+
+    /** Wide sweeping slash arc facing the viewer (mirror flips it left-right). */
+    public static void arc(World world, double x, double y, double z, boolean mirror, float roll, float halfSize) {
+        spawnVel(world, ModParticles.ARC, x, y, z, mirror ? -1.0 : 1.0, roll, halfSize);
+    }
+
     /** A ring of flames around a point (used for big blasts). */
     public static void flameRing(World world, double x, double groundY, double z, double radius, int count) {
         var r = world.random;

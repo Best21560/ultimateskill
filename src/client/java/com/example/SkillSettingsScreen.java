@@ -9,7 +9,7 @@ import net.minecraft.text.Text;
 import java.util.Locale;
 import java.util.function.DoubleConsumer;
 
-/** Settings window (key K): damage and cooldown of each skill, Asura buffs, cutscene on/off. */
+/** Settings window (opened from the skill menu): damage, cooldown and options of every skill. */
 public class SkillSettingsScreen extends Screen {
     private final Screen parent;
 
@@ -20,55 +20,77 @@ public class SkillSettingsScreen extends Screen {
 
     @Override
     protected void init() {
-        final int colW = 156, gap = 8, rowH = 22;
+        final int colW = 156, gap = 8, rowH = 20, hh = 18;
         int xL = this.width / 2 - colW - gap / 2;
         int xR = this.width / 2 + gap / 2;
-        int y = 28;
+        int y = 26;
 
         for (int i = 0; i < 3; i++) {
             final int idx = i;
-            addDrawableChild(new ValueSlider(xL, y, colW, 20, Skills.NAMES[i] + " dmg", 1, 200, 1, "%.0f",
+            addDrawableChild(new ValueSlider(xL, y, colW, hh, Skills.NAMES[i] + " dmg", 1, 200, 1, "%.0f",
                     SkillConfig.DAMAGE[i], v -> SkillConfig.DAMAGE[idx] = (float) v));
-            addDrawableChild(new ValueSlider(xR, y, colW, 20, Skills.NAMES[i] + " cd", 1, 120, 1, "%.0fs",
+            addDrawableChild(new ValueSlider(xR, y, colW, hh, Skills.NAMES[i] + " cd", 1, 120, 1, "%.0fs",
                     SkillConfig.COOLDOWN_SECONDS[i], v -> SkillConfig.COOLDOWN_SECONDS[idx] = (int) Math.round(v)));
             y += rowH;
         }
 
-        addDrawableChild(new ValueSlider(xL, y, colW, 20, "Buff attack", 0, 20, 1, "+%.0f",
+        // Asura (passive second life)
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Revive cooldown", 10, 1200, 10, "%.0fs",
+                SkillConfig.reviveCooldownSeconds, v -> SkillConfig.reviveCooldownSeconds = (int) Math.round(v)));
+        addDrawableChild(new ValueSlider(xR, y, colW, hh, "Revive blast dmg", 0, 200, 5, "%.0f",
+                SkillConfig.reviveBlastDamage, v -> SkillConfig.reviveBlastDamage = (float) v));
+        y += rowH;
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Buff attack", 0, 20, 1, "+%.0f",
                 SkillConfig.buffAttack, v -> SkillConfig.buffAttack = (float) v));
-        addDrawableChild(new ValueSlider(xR, y, colW, 20, "Buff armor", 0, 20, 1, "+%.0f",
+        addDrawableChild(new ValueSlider(xR, y, colW, hh, "Buff armor", 0, 20, 1, "+%.0f",
                 SkillConfig.buffArmor, v -> SkillConfig.buffArmor = (float) v));
         y += rowH;
-        addDrawableChild(new ValueSlider(xL, y, colW, 20, "Buff speed", 0, 0.20, 0.01, "+%.2f",
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Buff speed", 0, 0.20, 0.01, "+%.2f",
                 SkillConfig.buffSpeed, v -> SkillConfig.buffSpeed = (float) v));
-        addDrawableChild(new ValueSlider(xR, y, colW, 20, "Buff time (aura)", 1, 120, 1, "%.0fs",
+        addDrawableChild(new ValueSlider(xR, y, colW, hh, "Buff time (aura)", 1, 120, 1, "%.0fs",
                 SkillConfig.buffSeconds, v -> SkillConfig.buffSeconds = (int) Math.round(v)));
         y += rowH;
-        addDrawableChild(new ValueSlider(xL, y, colW, 20, "Dash distance", 2, 15, 1, "%.0fm",
-                SkillConfig.dashDistance, v -> SkillConfig.dashDistance = (float) v));
-        addDrawableChild(new ValueSlider(xR, y, colW, 20, "Leap max", 8, 40, 1, "%.0fm",
-                SkillConfig.leapMaxDistance, v -> SkillConfig.leapMaxDistance = (float) v));
-        y += rowH;
-        addDrawableChild(new ValueSlider(xL, y, colW, 20, "Max charge time", 1, 10, 1, "%.0fs",
-                SkillConfig.chargeSeconds, v -> SkillConfig.chargeSeconds = (int) Math.round(v)));
-        addDrawableChild(ButtonWidget.builder(cutsceneLabel(), b -> {
-            SkillConfig.cutscene = !SkillConfig.cutscene;
-            b.setMessage(cutsceneLabel());
-        }).dimensions(xR, y, colW, 20).build());
+
+        // Rampage
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Rampage time", 2, 30, 1, "%.0fs",
+                SkillConfig.rampageSeconds, v -> SkillConfig.rampageSeconds = (int) Math.round(v)));
+        addDrawableChild(toggle(xR, y, colW, hh, "Rampage breaks blocks", () -> SkillConfig.breakBlocks,
+                () -> SkillConfig.breakBlocks = !SkillConfig.breakBlocks));
         y += rowH;
 
+        // Meteor Slam
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Leap max", 12, 60, 1, "%.0fm",
+                SkillConfig.leapMaxDistance, v -> SkillConfig.leapMaxDistance = (float) v));
+        addDrawableChild(new ValueSlider(xR, y, colW, hh, "Max charge time", 1, 10, 1, "%.0fs",
+                SkillConfig.chargeSeconds, v -> SkillConfig.chargeSeconds = (int) Math.round(v)));
+        y += rowH;
+
+        // Swoop Grab (ultimate)
+        addDrawableChild(new ValueSlider(xL, y, colW, hh, "Dash distance", 5, 30, 1, "%.0fm",
+                SkillConfig.dashDistance, v -> SkillConfig.dashDistance = (float) v));
+        addDrawableChild(toggle(xR, y, colW, hh, "Ultimate cutscene", () -> SkillConfig.ultCutscene,
+                () -> SkillConfig.ultCutscene = !SkillConfig.ultCutscene));
+        y += rowH;
+
+        addDrawableChild(toggle(xL, y, colW, hh, "Revive cutscene", () -> SkillConfig.cutscene,
+                () -> SkillConfig.cutscene = !SkillConfig.cutscene));
         addDrawableChild(ButtonWidget.builder(Text.literal("Reset to defaults"), b -> {
             SkillConfig.resetDefaults();
             this.client.setScreen(new SkillSettingsScreen(parent));
-        }).dimensions(this.width / 2 - colW / 2, y, colW, 20).build());
+        }).dimensions(xR, y, colW, hh).build());
+        y += rowH;
 
-        int doneY = Math.max(y + 24, this.height - 34);
+        int doneY = Math.max(y + 6, this.height - 32);
         addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close())
                 .dimensions(this.width / 2 - 60, doneY, 120, 20).build());
     }
 
-    private static Text cutsceneLabel() {
-        return Text.literal("Asura cutscene: " + (SkillConfig.cutscene ? "ON" : "OFF"));
+    private static ButtonWidget toggle(int x, int y, int w, int h, String label,
+                                       java.util.function.BooleanSupplier get, Runnable flip) {
+        return ButtonWidget.builder(Text.literal(label + ": " + (get.getAsBoolean() ? "ON" : "OFF")), b -> {
+            flip.run();
+            b.setMessage(Text.literal(label + ": " + (get.getAsBoolean() ? "ON" : "OFF")));
+        }).dimensions(x, y, w, h).build();
     }
 
     @Override

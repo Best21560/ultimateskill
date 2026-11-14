@@ -13,19 +13,19 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
 /**
- * Animated sprite particle used for the three custom effects.
+ * Animated sprite particle used for all of the mod's own effects.
  * The three numbers passed as the particle "velocity" are parameters, not movement:
- *   CLAW : a = -1 means mirrored, b = roll (radians), c = half size (blocks)
- *   CRACK: b = yaw (radians),     c = half width (blocks)  (lies flat on the ground)
- *   FLAME: c = half size (blocks) (rises slowly)
+ *   CLAW, ARC : a = -1 means mirrored, b = roll (radians), c = half size (blocks)
+ *   CRACK, RING: c = half width (blocks); lies flat on the ground
+ *   FLAME, BURST, DUST: c = half size (blocks)
+ *   SPARK: (a, b, c) = start velocity (blocks per tick)
  */
 public class FxParticle extends SpriteBillboardParticle {
-    public enum Kind { CLAW, CRACK, FLAME }
+    public enum Kind { CLAW, CRACK, FLAME, RING, BURST, DUST, SPARK, ARC }
 
     private final SpriteProvider sprites;
     private final Kind kind;
     private boolean mirror = false;
-    private float yaw = 0f;
     private final float baseSize;
 
     protected FxParticle(ClientWorld world, double x, double y, double z,
@@ -41,19 +41,29 @@ public class FxParticle extends SpriteBillboardParticle {
         this.red = 1f;
         this.green = 1f;
         this.blue = 1f;
-        this.baseSize = (float) Math.max(0.1, c);
+        this.baseSize = kind == Kind.SPARK ? 0.22f + 0.1f * this.random.nextFloat() : (float) Math.max(0.1, c);
         this.scale = baseSize;
 
         switch (kind) {
-            case CLAW -> {
+            case CLAW, ARC -> {
                 this.mirror = a < 0;
                 this.angle = (float) b;
                 this.prevAngle = (float) b;
-                this.maxAge = 14;
+                this.maxAge = kind == Kind.ARC ? 12 : 14;
             }
-            case CRACK -> {
-                this.yaw = (float) b;
-                this.maxAge = 40;
+            case CRACK -> this.maxAge = 40;
+            case RING -> this.maxAge = 14;
+            case BURST -> this.maxAge = 8;
+            case DUST -> {
+                this.velocityY = 0.015;
+                this.maxAge = 18;
+            }
+            case SPARK -> {
+                this.velocityX = a;
+                this.velocityY = b;
+                this.velocityZ = c;
+                this.gravityStrength = 0.9f;
+                this.maxAge = 10 + this.random.nextInt(6);
             }
             default -> {
                 this.velocityY = 0.03;
@@ -63,10 +73,16 @@ public class FxParticle extends SpriteBillboardParticle {
         updateSprite();
     }
 
+    private boolean isFlat() {
+        return kind == Kind.CRACK || kind == Kind.RING;
+    }
+
     private void updateSprite() {
         switch (kind) {
-            case CLAW -> this.setSprite(sprites.getSprite(Math.min(age, 8), 8));   // slash plays in 8 ticks, then holds
-            case CRACK -> this.setSprite(sprites.getSprite(Math.min(age, 6), 6));  // cracks spread in 6 ticks, then hold
+            case CLAW, ARC -> this.setSprite(sprites.getSprite(Math.min(age, 8), 8));  // slash plays in 8 ticks, then holds
+            case CRACK -> this.setSprite(sprites.getSprite(Math.min(age, 6), 6));      // cracks spread in 6 ticks, then hold
+            case RING -> this.setSprite(sprites.getSprite(Math.min(age, 10), 10));
+            case SPARK -> this.setSprite(sprites.getSprite(age % 4, 3));               // flicker
             default -> this.setSprite(sprites.getSprite(age, Math.max(1, maxAge - 1)));
         }
     }
@@ -83,9 +99,30 @@ public class FxParticle extends SpriteBillboardParticle {
                 this.scale = baseSize * (0.85f + 0.15f * Math.min(1f, age / 5f));
                 this.alpha = 1f - MathHelper.clamp((age - 8) / 6f, 0f, 1f);
             }
+            case ARC -> {
+                this.scale = baseSize * (0.85f + 0.2f * Math.min(1f, age / 6f));
+                this.alpha = 1f - MathHelper.clamp((age - 7) / 5f, 0f, 1f);
+            }
             case CRACK -> {
                 this.scale = baseSize * (0.9f + 0.1f * Math.min(1f, age / 8f));
                 this.alpha = 1f - MathHelper.clamp((age - 26) / 14f, 0f, 1f);
+            }
+            case RING -> {
+                float t = Math.min(1f, age / 10f);
+                this.scale = baseSize * (0.3f + 0.7f * (1f - (1f - t) * (1f - t)));   // fast expand, slows down
+                this.alpha = 1f - MathHelper.clamp((age - 5) / 9f, 0f, 1f);
+            }
+            case BURST -> {
+                this.scale = baseSize * (0.65f + 0.45f * Math.min(1f, age / 3f));
+                this.alpha = 1f - MathHelper.clamp((age - 4) / 4f, 0f, 1f);
+            }
+            case DUST -> {
+                this.scale = baseSize * (0.8f + 0.55f * life);
+                this.alpha = 1f - MathHelper.clamp((age - 8) / 10f, 0f, 1f);
+            }
+            case SPARK -> {
+                this.scale = baseSize * (1f - 0.6f * life);
+                this.alpha = 1f - MathHelper.clamp((life - 0.6f) / 0.4f, 0f, 1f);
             }
             default -> {
                 this.scale = baseSize * (0.85f + 0.25f * life);
@@ -121,7 +158,7 @@ public class FxParticle extends SpriteBillboardParticle {
 
     @Override
     public void buildGeometry(VertexConsumer vc, Camera camera, float tickDelta) {
-        if (kind != Kind.CRACK) {
+        if (!isFlat()) {
             super.buildGeometry(vc, camera, tickDelta);
             return;
         }
@@ -131,10 +168,8 @@ public class FxParticle extends SpriteBillboardParticle {
         float py = (float) (MathHelper.lerp(tickDelta, this.prevPosY, this.y) - cam.getY());
         float pz = (float) (MathHelper.lerp(tickDelta, this.prevPosZ, this.z) - cam.getZ());
         float hw = this.scale;
-        float hd = hw;
-        float cos = MathHelper.cos(yaw), sin = MathHelper.sin(yaw);
         float[] cx = {-hw, -hw, hw, hw};
-        float[] cz = {-hd, hd, hd, -hd};
+        float[] cz = {-hw, hw, hw, -hw};
         float u0 = getMinU(), u1 = getMaxU(), v0 = getMinV(), v1 = getMaxV();
         float[] us = {u0, u0, u1, u1};
         float[] vs = {v1, v0, v0, v1};
@@ -142,9 +177,7 @@ public class FxParticle extends SpriteBillboardParticle {
         for (int pass = 0; pass < 2; pass++) { // both faces, so it is visible from any side
             for (int k = 0; k < 4; k++) {
                 int i = pass == 0 ? k : 3 - k;
-                float wx = cx[i] * cos - cz[i] * sin;
-                float wz = cx[i] * sin + cz[i] * cos;
-                vc.vertex(px + wx, py, pz + wz).texture(us[i], vs[i]).color(red, green, blue, alpha).light(light).next();
+                vc.vertex(px + cx[i], py, pz + cz[i]).texture(us[i], vs[i]).color(red, green, blue, alpha).light(light).next();
             }
         }
     }

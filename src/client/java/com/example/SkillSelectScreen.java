@@ -6,13 +6,15 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 
-/** Skill selection screen (key K): equip skills into slots 1-3. */
+/** Skill selection screen (key K): equip skills into slots 1-3 (Asura is a passive and needs no slot). */
 public class SkillSelectScreen extends Screen {
-    private static final String[][] DESC = {
-            {"Dash forward and", "slash twice with", "both hands."},
-            {"Hold to charge,", "release to leap", "and slam down."},
-            {"Awakening blast.", "Grants buffs and", "a red-black aura."},
-    };
+    private static String[][] desc() {
+        return new String[][]{
+                {"Hold to run and", "tear through all", "ahead (max " + SkillConfig.rampageSeconds + "s)."},
+                {"Hold to charge, leap", "far, then punch the", "ground " + Skills.PUNCHES + " times."},
+                {"Dash, grab a target,", "throw it up, swoop", "it, then slam it down."},
+        };
+    }
     private static final String[] SLOT_KEYS = {"Z", "X", "C"};
 
     private final Screen parent;
@@ -114,9 +116,9 @@ public class SkillSelectScreen extends Screen {
 
             drawScaled(ctx, Skills.NAMES[i], x + 8, y + 10, 1.25f, Ui.argb(0xFFFFFF, fade));
             for (int l = 0; l < 3; l++) {
-                ctx.drawTextWithShadow(this.textRenderer, DESC[i][l], x + 8, y + 27 + l * 10, Ui.argb(0xB0B8C8, fade));
+                ctx.drawTextWithShadow(this.textRenderer, desc()[i][l], x + 8, y + 27 + l * 10, Ui.argb(0xB0B8C8, fade));
             }
-            String dmg = "DMG " + (int) Skills.damage(i) + (i == 0 ? " x2" : "");
+            String dmg = Skills.damageLabel(i);
             ctx.drawTextWithShadow(this.textRenderer, dmg, x + 8, y + 60, Ui.argb(0xFFA0A0, fade));
             ctx.drawTextWithShadow(this.textRenderer, "CD " + (Skills.cooldownTicks(i) / 20) + "s", x + 8, y + 70, Ui.argb(0xA0C8FF, fade));
 

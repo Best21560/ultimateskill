@@ -6,7 +6,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
 /**
- * Invisible screen opened during the Asura cutscene. It draws the 2D overlays,
+ * Invisible screen opened during a cutscene (revive or ultimate). It draws the 2D overlays,
  * freezes player input, and lets Esc skip the cutscene.
  */
 public class CutsceneScreen extends Screen {
@@ -21,11 +21,17 @@ public class CutsceneScreen extends Screen {
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-        AsuraCutscene.renderOverlay(ctx, this.width, this.height, delta);
+        if (UltCutscene.isPlaying()) {
+            UltCutscene.renderOverlay(ctx, this.width, this.height, delta);
+        } else {
+            AsuraCutscene.renderOverlay(ctx, this.width, this.height, delta);
+        }
     }
 
     @Override
     public void removed() {
-        AsuraCutscene.stop(MinecraftClient.getInstance(), false);
+        MinecraftClient mc = MinecraftClient.getInstance();
+        UltCutscene.stop(mc, false);
+        AsuraCutscene.stop(mc, false);
     }
 }
